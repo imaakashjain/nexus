@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Weekly Stability Extractor v11</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f9fa;color:#1a1a2e;font-size:13px;min-height:100vh}
+    .shell{max-width:900px;margin:0 auto;padding:20px}
+    .header{background:linear-gradient(135deg,#1a1a2e,#16213e);color:#fff;padding:20px 24px;border-radius:12px 12px 0 0}
+    .header h1{font-size:18px;font-weight:700;margin-bottom:3px}
+    .header p{font-size:12px;opacity:.7}
+    .card{background:#fff;border-radius:0 0 12px 12px;box-shadow:0 2px 12px rgba(0,0,0,.06);overflow:hidden}
+    .main-tabs{display:flex;border-bottom:2px solid #e9ecef}
+    .main-tab{flex:1;padding:12px;text-align:center;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;color:#6c757d;transition:.2s}
+    .main-tab:hover{color:#4361ee}
+    .main-tab.active{color:#4361ee;border-bottom-color:#4361ee}
+    .tab-content{display:none;padding:20px 24px}
+    .tab-content.active{display:block}
+    .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6c757d;margin-bottom:10px}
+    .date-row{display:flex;gap:12px;margin-bottom:8px}
+    .date-row label{flex:1}
+    .date-row label span{display:block;font-size:11px;color:#6c757d;margin-bottom:4px}
+    .date-row input{width:100%;padding:8px 10px;border:1.5px solid #dee2e6;border-radius:6px;font-size:13px;outline:none}
+    .date-row input:focus{border-color:#4361ee}
+    .date-info{font-size:11px;color:#6c757d;margin:8px 0 16px;line-height:1.6;background:#f8f9fa;padding:10px 14px;border-radius:6px}
+    .date-info strong{color:#1a1a2e}
+    .btn-row{display:flex;gap:10px;margin-bottom:16px}
+    .btn{padding:10px 18px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:.2s}
+    .btn-primary{background:#4361ee;color:#fff;flex:1}
+    .btn-primary:hover{background:#3a56d4}
+    .btn-primary:disabled{background:#a0aec0;cursor:not-allowed}
+    .btn-green{background:#1D9E75;color:#fff}
+    .btn-green:hover{background:#178a63}
+    .btn-green:disabled{opacity:.4;cursor:not-allowed}
+    .btn-outline{background:#fff;border:1.5px solid #dee2e6;color:#495057}
+    .btn-outline:hover{border-color:#4361ee;color:#4361ee}
+    .status-bar{padding:10px 14px;border-radius:6px;font-size:12px;margin-bottom:16px;display:none}
+    .status-bar.loading{display:block;background:#fff3cd;color:#856404}
+    .status-bar.error{display:block;background:#f8d7da;color:#721c24}
+    .status-bar.success{display:block;background:#d4edda;color:#155724}
+    .okr-section{margin-bottom:20px}
+    .okr-section-title{font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+    .env-badge{display:inline-block;padding:3px 10px;border-radius:4px;font-size:10px;font-weight:700;color:#fff}
+    .env-badge.prod{background:#1D9E75}
+    .env-badge.staging{background:#F59E0B}
+    .env-badge.nightly{background:#8B5CF6}
+    table{width:100%;border-collapse:collapse;font-size:12px;margin:6px 0 16px}
+    th{background:#f1f3f5;padding:8px 10px;text-align:left;font-weight:600;font-size:11px;color:#495057;border-bottom:2px solid #dee2e6}
+    td{padding:8px 10px;border-bottom:1px solid #f1f3f5}
+    .g{color:#1D9E75;font-weight:600}
+    .r{color:#E24B4A;font-weight:600}
+    .y{color:#F59E0B;font-weight:600}
+    .dim{color:#adb5bd;font-size:11px}
+    /* Data tab */
+    .modules-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px}
+    .module-chip{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1.5px solid #dee2e6;border-radius:6px;cursor:pointer;font-size:12px;user-select:none;transition:.15s}
+    .module-chip:hover{border-color:#4361ee;background:#f0f3ff}
+    .module-chip.selected{border-color:#4361ee;background:#eef1ff;color:#4361ee;font-weight:500}
+    .module-chip input{display:none}
+    .chip-dot{width:8px;height:8px;border-radius:50%;border:2px solid #ccc;flex-shrink:0}
+    .module-chip.selected .chip-dot{background:#4361ee;border-color:#4361ee}
+    .env-tabs{display:flex;gap:6px;margin-bottom:14px}
+    .env-tab{padding:8px 16px;border:1.5px solid #dee2e6;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;color:#6c757d;transition:.15s}
+    .env-tab:hover{border-color:#4361ee;color:#4361ee}
+    .env-tab.active{border-color:#4361ee;background:#eef1ff;color:#4361ee}
+    .quick-dates{display:flex;gap:6px;margin-bottom:10px}
+    .quick-btn{padding:4px 10px;border:1px solid #dee2e6;border-radius:4px;background:#fff;font-size:11px;cursor:pointer;color:#495057}
+    .quick-btn:hover{border-color:#4361ee;color:#4361ee}
+    .chart-container{display:none} /* legacy, unused */
+    .chart-header{display:none}
+    .dl-btn{display:none}
+    .slide-fmt{background:#f8f9fa;border:1.5px solid #e9ecef;border-radius:8px;padding:12px;font-size:12px;line-height:1.8}
+    .slide-fmt .ml{display:flex;justify-content:space-between;padding:2px 0}
+    .slide-fmt .mn{font-weight:500}
+    .ff{color:#E24B4A;font-size:10px;margin-left:4px}
+    .clusters-info{font-size:10px;color:#6c757d;margin:6px 0}
+    .clusters-info code{background:#f1f3f5;padding:1px 4px;border-radius:3px;font-size:10px}
+    .charts-grid{display:block}
+    .pptx-note{display:flex;align-items:center;gap:8px;background:#eef1ff;border:1.5px solid #c5cffb;border-radius:8px;padding:10px 14px;font-size:12px;color:#3a56d4;margin-bottom:10px}
+    .pptx-note svg{flex-shrink:0}
+    .mod-card{display:flex;flex-direction:column;background:#fff;border:1.5px solid #e9ecef;border-radius:8px;padding:9px 14px;margin-bottom:6px;transition:.15s}
+    .mod-card:hover{border-color:#c5cffb}
+    .mod-card-row{display:flex;align-items:center;flex-wrap:wrap}
+    .mod-card-name{font-size:12px;font-weight:700;color:#1a1a2e;min-width:130px;flex-shrink:0}
+    .mod-card-sep{color:#dee2e6;margin:0 10px;font-size:12px}
+    .mod-card-stat{font-size:12px;color:#495057}
+    .mod-card-stat strong{color:#1a1a2e}
+    .mod-card-loading{font-size:11px;color:#adb5bd;font-style:italic}
+    .fail-runs-wrap{margin-top:8px;padding-top:8px;border-top:1px solid #f1f3f5}
+    .fail-runs-list{list-style:none;padding:0;margin:0 0 8px}
+    .fail-run-row{display:flex;align-items:center;gap:10px;font-size:10.5px;padding:4px 0;border-bottom:1px solid #f8f9fa;color:#495057}
+    .fail-run-row:last-child{border-bottom:none}
+    .fail-run-id{font-family:monospace;font-size:10px;color:#4361ee;text-decoration:none;word-break:break-all}
+    .fail-run-id:hover{text-decoration:underline}
+    .fail-date{color:#6c757d;font-size:10.5px;min-width:90px;flex-shrink:0}
+    .fail-count{color:#dc3545;font-weight:700;min-width:60px;flex-shrink:0}
+    .fail-total{min-width:62px;font-size:10.5px;color:#495057;flex-shrink:0}
+    .fail-pass{min-width:52px;font-size:10.5px;color:#2E9E3F;font-weight:700;flex-shrink:0}
+    .fail-fail{min-width:48px;font-size:10.5px;color:#dc3545;font-weight:700;flex-shrink:0}
+    .mod-note{display:none} /* removed — edit RCA directly in PPTX */
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="header">
+      <h1>📊 Weekly Stability Extractor <span style="font-size:12px;opacity:.6;font-weight:400">v11</span></h1>
+      <p>CRM Automation — OKR & Metrics</p>
+    </div>
+    <div class="card">
+      <div class="main-tabs">
+        <div class="main-tab active" data-tab="okr">📋 OKR</div>
+        <div class="main-tab" data-tab="data">📅 Weekly</div>
+        <div class="main-tab" data-tab="monthly">📅 Monthly</div>
+      </div>
+
+      <!-- OKR TAB -->
+      <div class="tab-content active" id="tab-okr">
+        <div class="section-title">OKR Week (Wed → Tue)</div>
+        <div class="date-row">
+          <label><span>Week Start (Wed)</span><input type="date" id="okrWeekStart"></label>
+          <label><span>Week End (Tue)</span><input type="date" id="okrWeekEnd"></label>
+        </div>
+        <div class="date-info" id="okrDateInfo"></div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="fetchOkrBtn">Fetch OKR Data</button>
+          <button class="btn btn-green" id="genPptxBtn" disabled>📥 Generate PPTX</button>
+        </div>
+        <div class="status-bar" id="okrStatus"></div>
+        <div id="okrResults"></div>
+      </div>
+
+      <!-- DATA TAB -->
+      <div class="tab-content" id="tab-data">
+        <div class="section-title">Date Range</div>
+        <div class="quick-dates">
+          <button class="quick-btn" id="thisWeek">This Week</button>
+          <button class="quick-btn" id="lastWeek">Last Week</button>
+          <button class="quick-btn" id="last7">Last 7 Days</button>
+        </div>
+        <div class="date-row">
+          <label><span>Start (inclusive)</span><input type="date" id="startDate"></label>
+          <label><span>End (inclusive)</span><input type="date" id="endDate"></label>
+        </div>
+        <div class="section-title" style="margin-top:14px">Modules</div>
+        <div class="modules-grid" id="modulesGrid"></div>
+        <div class="section-title">Environment</div>
+        <div class="env-tabs">
+          <div class="env-tab active" data-env="prod">🟢 Production</div>
+          <div class="env-tab" data-env="staging">🟡 Staging</div>
+          <div class="env-tab" data-env="nightly">🟣 Nightly</div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="fetchBtn">Fetch Data</button>
+          <button class="btn btn-green" id="downloadBtn" disabled>📥 Download PPTX</button>
+        </div>
+        <div class="status-bar" id="dataStatus"></div>
+        <div id="dataResults" style="display:none">
+          <div id="dataEnvLabel"></div>
+          <div class="clusters-info" id="dataClusters"></div>
+          <div class="slide-fmt" id="dataSlide"></div>
+          <table><thead><tr><th>Module</th><th>Pass%</th><th>Fail%</th></tr></thead><tbody id="dataBody"></tbody></table>
+          <div class="charts-grid" id="dataCharts"></div>
+        </div>
+      </div>
+
+      <!-- MONTHLY TAB -->
+      <div class="tab-content" id="tab-monthly">
+        <div style="text-align:center;padding:60px 20px;color:#6c757d">
+          <div style="font-size:32px;margin-bottom:10px">🚧</div>
+          <div style="font-weight:600;font-size:15px">Monthly Metrics — Coming Soon</div>
+          <div style="font-size:12px;margin-top:6px">Month-level aggregations across all environments</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="lib/chart.umd.js"></script>
+  <script src="lib/pptxgen.bundle.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
