@@ -166,11 +166,24 @@
 
       <!-- MONTHLY TAB -->
       <div class="tab-content" id="tab-monthly">
-        <div style="text-align:center;padding:60px 20px;color:#6c757d">
-          <div style="font-size:32px;margin-bottom:10px">🚧</div>
-          <div style="font-weight:600;font-size:15px">Monthly Metrics — Coming Soon</div>
-          <div style="font-size:12px;margin-top:6px">Month-level aggregations across all environments</div>
+        <div class="section-title">📆 Monthly Automation Report</div>
+        <div class="form-row">
+          <label><span>Start</span><input type="date" id="mStartDate"></label>
+          <label><span>End (inclusive)</span><input type="date" id="mEndDate"></label>
         </div>
+        <div style="display:flex;gap:6px;margin:6px 0 10px">
+          <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" id="mLastMonth">◀ Last Month</button>
+          <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" id="mThisMonth">This Month</button>
+        </div>
+        <div style="background:#f0f4ff;border:1.5px solid #c5cffb;border-radius:7px;padding:8px 12px;font-size:11px;color:#3a56d4;margin-bottom:10px">
+          ⚙️ Fetches <strong>Production only</strong> — <strong>Coupons</strong> and <strong>Loyalty</strong> (UI + Node). One slide per pair.
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+          <button class="btn btn-blue" id="mFetchBtn">Fetch Monthly Data</button>
+          <button class="btn btn-green" id="mDownloadBtn" disabled>📥 Download PPTX</button>
+        </div>
+        <div id="mStatus" class="status"></div>
+        <div id="mResults"></div>
       </div>
     </div>
   </div>

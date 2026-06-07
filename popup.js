@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initMainTabs();
   initOkrDates();
   initDataTab();
+  initMonthlyTab();
   document.getElementById('fetchOkrBtn').addEventListener('click', fetchOkr);
   document.getElementById('genPptxBtn').addEventListener('click', generatePptx);
 });
@@ -679,3 +680,272 @@ async function generateWeeklyPptx(){
 
 // ===== UTILS =====
 function setStatus(id,type,msg){const b=document.getElementById(id);b.className='status-bar '+type;b.textContent=msg}
+
+// ============================================================
+// ===== MONTHLY TAB (3rd tab) — Production only, Coupons & Loyalty =====
+// ============================================================
+const MONTHLY_PAIRS = [
+  { cat:'Coupons', ui:'couponsUI', node:'couponnode' },
+  { cat:'Loyalty', ui:'loyaltyUI', node:'loyaltynode' }
+];
+
+// environment value → short display name
+const CLUSTER_LABEL = {
+  'Eucrm':'EU',  'eucrm':'EU',
+  'incrm':'IN',  'Incrm':'IN',
+  'Seacrm':'SEA','seacrm':'SEA',
+  'sgcrm':'ASIA','Sgcrm':'ASIA',
+  'Tatacrm':'TATA','tatacrm':'TATA',
+  'Uscrm':'US',  'uscrm':'US',
+  'Ushc_Crm':'USHC','ushc_crm':'USHC'
+};
+const CLUSTER_ORDER = ['EU','ASIA','IN','TATA','US','USHC','SEA'];
+
+let monthlyData = null;
+
+// Per-cluster pass/fail grouped by environment (no timeseries)
+function buildMonthlyClusterPayload(timeRange, moduleIds, clusters) {
+  return JSON.stringify({
+    datasource:DS, force:false,
+    queries:[{
+      time_range:timeRange, granularity:'start_time', is_timeseries:false,
+      groupby:['environment'],
+      metrics:[
+        {expressionType:'SQL',hasCustomLabel:true,label:'pass',sqlExpression:'SUM(pass)'},
+        {expressionType:'SQL',hasCustomLabel:true,label:'fail',sqlExpression:'SUM(fail)'}
+      ],
+      filters:[
+        {col:'abortedby',op:'IS NULL'},
+        {col:'module',op:'IN',val:moduleIds},
+        {col:'environment',op:'IN',val:clusters}
+      ],
+      extras:{where:"(session_name like '%Smoke%' or session_name like '%Sanity%')"},
+      row_limit:1000
+    }],result_format:'json',result_type:'full'
+  });
+}
+
+function setMonthlyQuickDate(type) {
+  const now=new Date();
+  let s, e;
+  if(type==='last'){
+    s=new Date(now.getFullYear(), now.getMonth()-1, 1);
+    e=new Date(now.getFullYear(), now.getMonth(), 0); // last day of prev month
+  } else {
+    s=new Date(now.getFullYear(), now.getMonth(), 1);
+    e=new Date(now);
+  }
+  document.getElementById('mStartDate').value=fmt(s);
+  document.getElementById('mEndDate').value=fmt(e);
+}
+
+function initMonthlyTab() {
+  setMonthlyQuickDate('last'); // default: last full month
+  document.getElementById('mLastMonth').addEventListener('click',()=>setMonthlyQuickDate('last'));
+  document.getElementById('mThisMonth').addEventListener('click',()=>setMonthlyQuickDate('this'));
+  document.getElementById('mFetchBtn').addEventListener('click', fetchMonthlyData);
+  document.getElementById('mDownloadBtn').addEventListener('click', generateMonthlyPptx);
+}
+
+// Aggregate API rows into {displayName: {pass, fail}} (merges duplicates like seacrm+Seacrm)
+function aggregateClusters(rows) {
+  const map={};
+  rows.forEach(r=>{
+    const lbl=CLUSTER_LABEL[r.environment]||r.environment;
+    if(!map[lbl]) map[lbl]={pass:0,fail:0};
+    map[lbl].pass += Number(r.pass)||0;
+    map[lbl].fail += Number(r.fail)||0;
+  });
+  return map;
+}
+
+// Pass% for a named cluster (2 decimal places, null if no data)
+function clusterPct(map, lbl) {
+  if(!map[lbl]) return null;
+  const {pass,fail}=map[lbl]; const tot=pass+fail;
+  return tot>0 ? Math.round((pass/tot)*10000)/100 : null;
+}
+
+// Overall pass% across all clusters
+function allClusterPct(map) {
+  let p=0,f=0; Object.values(map).forEach(v=>{p+=v.pass;f+=v.fail});
+  const tot=p+f; return tot>0 ? Math.round((p/tot)*10000)/100 : null;
+}
+
+async function fetchMonthlyData() {
+  const sd=document.getElementById('mStartDate').value;
+  const ed=document.getElementById('mEndDate').value;
+  if(!sd||!ed) return setStatus('mStatus','error','Set date range');
+  const edDate=new Date(ed+'T00:00:00'); edDate.setDate(edDate.getDate()+1);
+  const tr=`${sd} : ${fmt(edDate)}`;
+  const cls=ENV.prod.clusters;
+  const btn=document.getElementById('mFetchBtn');
+  btn.disabled=true; btn.textContent='Fetching…';
+  document.getElementById('mDownloadBtn').disabled=true;
+  monthlyData=null;
+  try{
+    setStatus('mStatus','loading','Fetching monthly data — Production only…');
+    const pairs=[];
+    for(const pair of MONTHLY_PAIRS){
+      setStatus('mStatus','loading',`Fetching ${pair.cat}: trends + cluster stats…`);
+      // 5 parallel requests per pair
+      // 4 parallel calls: UI trend, Node trend, UI cluster stats, Node cluster stats
+      // + 1 combined trend (UI+Node together, same regression exclusions as weekly)
+      const [uiTrend,nodeTrend,combinedTrend,uiCluster,nodeCluster]=await Promise.all([
+        runInSuperset(mkScript(buildTrendsPayload(tr,[pair.ui],cls))),
+        runInSuperset(mkScript(buildTrendsPayload(tr,[pair.node],cls))),
+        runInSuperset(mkScript(buildTrendsPayload(tr,[pair.ui,pair.node],cls))),
+        runInSuperset(mkScript(buildMonthlyClusterPayload(tr,[pair.ui],cls))),
+        runInSuperset(mkScript(buildMonthlyClusterPayload(tr,[pair.node],cls)))
+      ]);
+      pairs.push({
+        cat: pair.cat, ui: pair.ui, node: pair.node,
+        uiTrend: {
+          labels: uiTrend.map(r=>new Date(r.__timestamp).getDate().toString()),
+          pass:   uiTrend.map(r=>r.PassCount||0),
+          fail:   uiTrend.map(r=>r.FailCount||0)
+        },
+        nodeTrend: {
+          labels: nodeTrend.map(r=>new Date(r.__timestamp).getDate().toString()),
+          pass:   nodeTrend.map(r=>r.PassCount||0),
+          fail:   nodeTrend.map(r=>r.FailCount||0)
+        },
+        combinedTrend: {
+          labels: combinedTrend.map(r=>new Date(r.__timestamp).getDate().toString()),
+          pass:   combinedTrend.map(r=>r.PassCount||0),
+          fail:   combinedTrend.map(r=>r.FailCount||0)
+        },
+        uiCluster:   aggregateClusters(uiCluster),
+        nodeCluster: aggregateClusters(nodeCluster)
+      });
+    }
+    monthlyData={pairs,sd,ed,tr};
+    renderMonthlyResults();
+    setStatus('mStatus','success','Monthly data loaded — click Download PPTX');
+    document.getElementById('mDownloadBtn').disabled=false;
+  }catch(e){
+    setStatus('mStatus','error',e.message);
+  }finally{
+    btn.disabled=false; btn.textContent='Fetch Monthly Data';
+  }
+}
+
+function renderMonthlyResults() {
+  const area=document.getElementById('mResults'); if(!monthlyData){area.innerHTML='';return;}
+  let html='<div class="pptx-note" style="margin-bottom:8px"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#4361ee" stroke-width="1.5"/><rect x="7.25" y="6.5" width="1.5" height="5.5" rx=".75" fill="#4361ee"/><circle cx="8" cy="4.75" r=".85" fill="#4361ee"/></svg>&nbsp;PPTX will have 2 slides — one for Coupons, one for Loyalty — each with UI+Node trend charts and a cluster pass-rate table.</div>';
+  for(const p of monthlyData.pairs){
+    const uiAll=allClusterPct(p.uiCluster), nodeAll=allClusterPct(p.nodeCluster);
+    const uiCls=uiAll!=null&&uiAll>=99?'g':'r', nodeCls=nodeAll!=null&&nodeAll>=99?'g':'r';
+    html+=`<div class="mod-card" style="margin-bottom:6px"><div class="mod-card-row">
+      <span class="mod-card-name">${p.cat}</span>
+      <span class="mod-card-sep">|</span>
+      <span class="mod-card-stat">UI All-Cluster: <strong class="${uiCls}">${uiAll!=null?uiAll+'%':'—'}</strong></span>
+      <span class="mod-card-sep">|</span>
+      <span class="mod-card-stat">Node All-Cluster: <strong class="${nodeCls}">${nodeAll!=null?nodeAll+'%':'—'}</strong></span>
+      <span class="mod-card-sep">|</span>
+      <span class="mod-card-stat">Days: <strong>${p.uiTrend.labels.length}</strong></span>
+    </div></div>`;
+  }
+  area.innerHTML=html;
+}
+
+async function generateMonthlyPptx() {
+  if(!monthlyData) return setStatus('mStatus','error','Fetch data first');
+  if(typeof PptxGenJS==='undefined') return setStatus('mStatus','error','PptxGenJS not loaded — reopen popup');
+  const btn=document.getElementById('mDownloadBtn');
+  const old=btn.textContent; btn.disabled=true; btn.textContent='Building PPTX…';
+  try{
+    const pres=new PptxGenJS();
+    pres.defineLayout({name:'WIDE',width:13.33,height:7.5}); pres.layout='WIDE';
+    const INK='1A1A2E', GRAY='6C757D', GREEN='1D9E75', RED='DC2626', AMBER='B45309';
+    const TEAL='1A7F6E', ORANGE='D96A0A';
+
+    for(const pair of monthlyData.pairs){
+      const s=pres.addSlide();
+
+      // ── Header
+      s.addText('Automation Runs',{x:.3,y:.17,w:5.5,h:.45,fontSize:26,bold:true,color:ORANGE});
+      s.addText(`— ${pair.cat}`,{x:3.65,y:.19,w:4,h:.42,fontSize:19,bold:false,color:GRAY});
+      s.addShape(pres.ShapeType.rect,{x:.3,y:.6,w:3.0,h:.05,fill:{color:TEAL}});
+      s.addText('capillary',{x:10.5,y:.24,w:2.5,h:.35,fontSize:15,bold:true,color:'1BB3A0',align:'right'});
+
+      // ── 3 charts (UI / Node / Combined) stacked on left — 3 rows compressed
+      const chartW=7.9;
+      const uiM=MODS.find(m=>m.id===pair.ui);
+      const nodeM=MODS.find(m=>m.id===pair.node);
+
+      // UI chart
+      s.addShape(pres.ShapeType.rect,{x:.3,y:.73,w:3.4,h:.32,fill:{color:'ECECEC'},line:{color:'C4C4C4',width:1}});
+      s.addText(uiM?uiM.label:'UI',{x:.3,y:.73,w:3.4,h:.32,fontSize:12,bold:true,color:INK,align:'center',valign:'middle'});
+      const uiImg=await renderExportChart(pair.uiTrend.labels,pair.uiTrend.pass,pair.uiTrend.fail);
+      if(uiImg) s.addImage({data:uiImg,x:.3,y:1.08,w:chartW,h:1.74});
+
+      // Node chart
+      s.addShape(pres.ShapeType.rect,{x:.3,y:2.88,w:3.4,h:.32,fill:{color:'ECECEC'},line:{color:'C4C4C4',width:1}});
+      s.addText(nodeM?nodeM.label:'Node',{x:.3,y:2.88,w:3.4,h:.32,fontSize:12,bold:true,color:INK,align:'center',valign:'middle'});
+      const nodeImg=await renderExportChart(pair.nodeTrend.labels,pair.nodeTrend.pass,pair.nodeTrend.fail);
+      if(nodeImg) s.addImage({data:nodeImg,x:.3,y:3.23,w:chartW,h:1.74});
+
+      // Combined (UI + Node) chart
+      s.addShape(pres.ShapeType.rect,{x:.3,y:5.03,w:3.4,h:.32,fill:{color:'1A7F6E'},line:{color:'1A7F6E',width:1}});
+      s.addText(`${pair.cat} Combined`,{x:.3,y:5.03,w:3.4,h:.32,fontSize:12,bold:true,color:'FFFFFF',align:'center',valign:'middle'});
+      const combImg=await renderExportChart(pair.combinedTrend.labels,pair.combinedTrend.pass,pair.combinedTrend.fail);
+      if(combImg) s.addImage({data:combImg,x:.3,y:5.38,w:chartW,h:1.56});
+
+      // ── Cluster pass-rate table: 3 cols (Cluster | UI% | Node%) — no Combined% col
+      const hdr={bold:true,fontSize:9,fill:{color:TEAL},color:'FFFFFF',align:'center',valign:'middle'};
+      const tableRows=[[
+        {text:'Cluster',options:{...hdr,align:'left'}},
+        {text:'UI %',   options:{...hdr}},
+        {text:'Node %', options:{...hdr}}
+      ]];
+
+      const pctCell=(v,bold=false)=>{
+        if(v==null) return {text:'—',options:{fontSize:10,color:GRAY,align:'center',valign:'middle'}};
+        const color=v>=99.5?GREEN:v>=99?AMBER:RED;
+        return {text:v+'%',options:{fontSize:bold?11:10,bold,color,align:'center',valign:'middle'}};
+      };
+
+      for(const lbl of CLUSTER_ORDER){
+        tableRows.push([
+          {text:lbl,options:{fontSize:10,color:INK,align:'left',valign:'middle'}},
+          pctCell(clusterPct(pair.uiCluster,lbl)),
+          pctCell(clusterPct(pair.nodeCluster,lbl))
+        ]);
+      }
+
+      // All-clusters bold summary row
+      const allFill={fill:{color:'F0F2F5'}};
+      const boldPct=(v)=>{
+        if(v==null) return {text:'—',options:{fontSize:11,bold:true,color:GRAY,align:'center',valign:'middle',...allFill}};
+        return {text:v+'%',options:{fontSize:11,bold:true,color:v>=99.5?GREEN:v>=99?AMBER:RED,align:'center',valign:'middle',...allFill}};
+      };
+      tableRows.push([
+        {text:'All Clusters',options:{fontSize:10,bold:true,color:INK,align:'left',valign:'middle',...allFill}},
+        boldPct(allClusterPct(pair.uiCluster)),
+        boldPct(allClusterPct(pair.nodeCluster))
+      ]);
+
+      // rowH: spread 8 rows (7 clusters + All) across ~6.24" → 0.78" each
+      s.addTable(tableRows,{
+        x:8.38, y:.73, w:4.67,
+        colW:[0.92,1.88,1.87],
+        rowH:.78,
+        border:{type:'solid',color:'E9ECEF',pt:.5},
+        autoPage:false
+      });
+
+      // Footer
+      s.addText(`Production  |  ${monthlyData.sd} → ${monthlyData.ed}  |  ${ENV.prod.clusters.join(', ')}`,
+        {x:.3,y:7.1,w:12.7,h:.28,fontSize:8,color:GRAY});
+    }
+
+    const fname=`monthly-report-${monthlyData.sd}_to_${monthlyData.ed}.pptx`;
+    await pres.writeFile({fileName:fname});
+    setStatus('mStatus','success',`Monthly PPTX downloaded — ${monthlyData.pairs.length} slides`);
+  }catch(e){
+    setStatus('mStatus','error','PPTX failed: '+e.message);
+  }finally{
+    btn.disabled=false; btn.textContent=old||'📥 Download PPTX';
+  }
+}

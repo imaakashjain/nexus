@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Superset Weekly Stability v11",
-  "version": "11.1.0",
+  "version": "11.3.0",
   "description": "Extract weekly automation stability data from Superset — OKR, Weekly, Monthly",
   "permissions": ["activeTab", "scripting", "tabs", "downloads"],
   "host_permissions": ["https://superset.cc-tooling.cctools.capillarytech.com/*"],
