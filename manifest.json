@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Superset Weekly Stability v11",
-  "version": "11.3.0",
+  "name": "NEXUS",
+  "version": "1.0.0",
   "description": "Extract weekly automation stability data from Superset — OKR, Weekly, Monthly",
   "permissions": ["activeTab", "scripting", "tabs", "downloads"],
   "host_permissions": ["https://superset.cc-tooling.cctools.capillarytech.com/*"],
@@ -9,7 +9,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Weekly Stability v11 — Click to open"
+    "default_title": "NEXUS — Click to open"
   },
 
   "icons": {
