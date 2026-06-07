@@ -11,7 +11,7 @@
 
 **The nexus between your Superset automation data and your weekly stability report.**
 
-![Version](https://img.shields.io/badge/version-11.1.0-blue?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.0.0-blue?style=flat-square)
 ![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-yellow?style=flat-square&logo=googlechrome)
 ![Manifest](https://img.shields.io/badge/Manifest-V3-green?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-orange?style=flat-square)
