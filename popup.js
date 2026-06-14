@@ -832,7 +832,7 @@ async function fetchMonthlyData() {
 
 function renderMonthlyResults() {
   const area=document.getElementById('mResults'); if(!monthlyData){area.innerHTML='';return;}
-  let html='<div class="pptx-note" style="margin-bottom:8px"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#4361ee" stroke-width="1.5"/><rect x="7.25" y="6.5" width="1.5" height="5.5" rx=".75" fill="#4361ee"/><circle cx="8" cy="4.75" r=".85" fill="#4361ee"/></svg>&nbsp;PPTX will have 2 slides — one for Coupons, one for Loyalty — each with UI+Node trend charts and a cluster pass-rate table.</div>';
+  let html='<div class="pptx-note" style="margin-bottom:8px"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#4361ee" stroke-width="1.5"/><rect x="7.25" y="6.5" width="1.5" height="5.5" rx=".75" fill="#4361ee"/><circle cx="8" cy="4.75" r=".85" fill="#4361ee"/></svg>&nbsp;PPTX will have 2 slides — one for Coupons, one for Loyalty — each with a Combined (UI+Node) trend chart and a cluster pass-rate table.</div>';
   for(const p of monthlyData.pairs){
     const uiAll=allClusterPct(p.uiCluster), nodeAll=allClusterPct(p.nodeCluster);
     const uiCls=uiAll!=null&&uiAll>=99?'g':'r', nodeCls=nodeAll!=null&&nodeAll>=99?'g':'r';
@@ -869,28 +869,14 @@ async function generateMonthlyPptx() {
       s.addShape(pres.ShapeType.rect,{x:.3,y:.6,w:3.0,h:.05,fill:{color:TEAL}});
       s.addText('capillary',{x:10.5,y:.24,w:2.5,h:.35,fontSize:15,bold:true,color:'1BB3A0',align:'right'});
 
-      // ── 3 charts (UI / Node / Combined) stacked on left — 3 rows compressed
+      // ── Combined (UI + Node) chart — single chart on left
       const chartW=7.9;
-      const uiM=MODS.find(m=>m.id===pair.ui);
-      const nodeM=MODS.find(m=>m.id===pair.node);
-
-      // UI chart
-      s.addShape(pres.ShapeType.rect,{x:.3,y:.73,w:3.4,h:.32,fill:{color:'ECECEC'},line:{color:'C4C4C4',width:1}});
-      s.addText(uiM?uiM.label:'UI',{x:.3,y:.73,w:3.4,h:.32,fontSize:12,bold:true,color:INK,align:'center',valign:'middle'});
-      const uiImg=await renderExportChart(pair.uiTrend.labels,pair.uiTrend.pass,pair.uiTrend.fail);
-      if(uiImg) s.addImage({data:uiImg,x:.3,y:1.08,w:chartW,h:1.74});
-
-      // Node chart
-      s.addShape(pres.ShapeType.rect,{x:.3,y:2.88,w:3.4,h:.32,fill:{color:'ECECEC'},line:{color:'C4C4C4',width:1}});
-      s.addText(nodeM?nodeM.label:'Node',{x:.3,y:2.88,w:3.4,h:.32,fontSize:12,bold:true,color:INK,align:'center',valign:'middle'});
-      const nodeImg=await renderExportChart(pair.nodeTrend.labels,pair.nodeTrend.pass,pair.nodeTrend.fail);
-      if(nodeImg) s.addImage({data:nodeImg,x:.3,y:3.23,w:chartW,h:1.74});
 
       // Combined (UI + Node) chart
-      s.addShape(pres.ShapeType.rect,{x:.3,y:5.03,w:3.4,h:.32,fill:{color:'1A7F6E'},line:{color:'1A7F6E',width:1}});
-      s.addText(`${pair.cat} Combined`,{x:.3,y:5.03,w:3.4,h:.32,fontSize:12,bold:true,color:'FFFFFF',align:'center',valign:'middle'});
+      s.addShape(pres.ShapeType.rect,{x:.3,y:.73,w:3.4,h:.32,fill:{color:'1A7F6E'},line:{color:'1A7F6E',width:1}});
+      s.addText(`${pair.cat} Combined`,{x:.3,y:.73,w:3.4,h:.32,fontSize:12,bold:true,color:'FFFFFF',align:'center',valign:'middle'});
       const combImg=await renderExportChart(pair.combinedTrend.labels,pair.combinedTrend.pass,pair.combinedTrend.fail);
-      if(combImg) s.addImage({data:combImg,x:.3,y:5.38,w:chartW,h:1.56});
+      if(combImg) s.addImage({data:combImg,x:.3,y:1.08,w:chartW,h:3.42});
 
       // ── Cluster pass-rate table: 3 cols (Cluster | UI% | Node%) — no Combined% col
       const hdr={bold:true,fontSize:9,fill:{color:TEAL},color:'FFFFFF',align:'center',valign:'middle'};

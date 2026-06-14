@@ -2,18 +2,19 @@
   "manifest_version": 3,
   "name": "NEXUS",
   "version": "1.0.0",
-  "description": "Extract weekly automation stability data from Superset — OKR, Weekly, Monthly",
+  "description": "Weekly automation stability extractor for CRM team. Fetches test results from Superset and generates OKR, weekly, and monthly PPTX reports across Production, Staging, and Nightly environments.",
+  "author": "Aakash Jain <aakash.jain@capillarytech.com>",
   "permissions": ["activeTab", "scripting", "tabs", "downloads"],
   "host_permissions": ["https://superset.cc-tooling.cctools.capillarytech.com/*"],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "NEXUS — Click to open"
+    "default_title": "NEXUS"
   },
 
   "icons": {
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
+    "48": "icons/48.png",
+    "128": "icons/128.png"
   }
 }

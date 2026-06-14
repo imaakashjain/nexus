@@ -233,8 +233,8 @@ nexus/
 │   ├── chart.umd.js       # Chart.js v4.4.1 (local)
 │   └── pptxgen.bundle.js  # PptxGenJS v3.12.0 (local)
 └── icons/
-    ├── icon48.png
-    └── icon128.png
+    ├── capillary.png
+    └── nexus.png
 ```
 
 ---
