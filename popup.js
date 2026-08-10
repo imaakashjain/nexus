@@ -682,11 +682,15 @@ async function generateWeeklyPptx(){
 function setStatus(id,type,msg){const b=document.getElementById(id);b.className='status-bar '+type;b.textContent=msg}
 
 // ============================================================
-// ===== MONTHLY TAB (3rd tab) — Production only, Coupons & Loyalty =====
+// ===== MONTHLY TAB (3rd tab) — Production only =====
 // ============================================================
+// One slide per entry. `cat` is the slide heading; `short` (optional) is the
+// compact label used on the chart badge. `node:null` = UI-only module: the Node
+// fetches are skipped and the cluster table drops its Node % column.
 const MONTHLY_PAIRS = [
   { cat:'Coupons', ui:'couponsUI', node:'couponnode' },
-  { cat:'Loyalty', ui:'loyaltyUI', node:'loyaltynode' }
+  { cat:'Loyalty', ui:'loyaltyUI', node:'loyaltynode' },
+  { cat:'New Promotion V3 (Garuda UI)', short:'Garuda UI', ui:'garudaUIUI', node:null }
 ];
 
 // environment value → short display name
@@ -788,33 +792,27 @@ async function fetchMonthlyData() {
     const pairs=[];
     for(const pair of MONTHLY_PAIRS){
       setStatus('mStatus','loading',`Fetching ${pair.cat}: trends + cluster stats…`);
-      // 5 parallel requests per pair
-      // 4 parallel calls: UI trend, Node trend, UI cluster stats, Node cluster stats
-      // + 1 combined trend (UI+Node together, same regression exclusions as weekly)
-      const [uiTrend,nodeTrend,combinedTrend,uiCluster,nodeCluster]=await Promise.all([
+      const hasNode = !!pair.node;
+      // Up to 5 parallel calls: UI trend, Node trend, combined (UI+Node) trend,
+      // UI cluster stats, Node cluster stats. UI-only modules skip the Node calls
+      // and reuse the UI trend as the combined trend.
+      const [uiTrend,nodeTrend,combinedRaw,uiCluster,nodeCluster]=await Promise.all([
         runInSuperset(mkScript(buildTrendsPayload(tr,[pair.ui],cls))),
-        runInSuperset(mkScript(buildTrendsPayload(tr,[pair.node],cls))),
-        runInSuperset(mkScript(buildTrendsPayload(tr,[pair.ui,pair.node],cls))),
+        hasNode ? runInSuperset(mkScript(buildTrendsPayload(tr,[pair.node],cls))) : [],
+        hasNode ? runInSuperset(mkScript(buildTrendsPayload(tr,[pair.ui,pair.node],cls))) : [],
         runInSuperset(mkScript(buildMonthlyClusterPayload(tr,[pair.ui],cls))),
-        runInSuperset(mkScript(buildMonthlyClusterPayload(tr,[pair.node],cls)))
+        hasNode ? runInSuperset(mkScript(buildMonthlyClusterPayload(tr,[pair.node],cls))) : []
       ]);
+      const toTrend = rows => ({
+        labels: rows.map(r=>new Date(r.__timestamp).getDate().toString()),
+        pass:   rows.map(r=>r.PassCount||0),
+        fail:   rows.map(r=>r.FailCount||0)
+      });
       pairs.push({
-        cat: pair.cat, ui: pair.ui, node: pair.node,
-        uiTrend: {
-          labels: uiTrend.map(r=>new Date(r.__timestamp).getDate().toString()),
-          pass:   uiTrend.map(r=>r.PassCount||0),
-          fail:   uiTrend.map(r=>r.FailCount||0)
-        },
-        nodeTrend: {
-          labels: nodeTrend.map(r=>new Date(r.__timestamp).getDate().toString()),
-          pass:   nodeTrend.map(r=>r.PassCount||0),
-          fail:   nodeTrend.map(r=>r.FailCount||0)
-        },
-        combinedTrend: {
-          labels: combinedTrend.map(r=>new Date(r.__timestamp).getDate().toString()),
-          pass:   combinedTrend.map(r=>r.PassCount||0),
-          fail:   combinedTrend.map(r=>r.FailCount||0)
-        },
+        cat: pair.cat, short: pair.short, ui: pair.ui, node: pair.node,
+        uiTrend:       toTrend(uiTrend),
+        nodeTrend:     toTrend(nodeTrend),
+        combinedTrend: toTrend(hasNode ? combinedRaw : uiTrend),
         uiCluster:   aggregateClusters(uiCluster),
         nodeCluster: aggregateClusters(nodeCluster)
       });
@@ -832,16 +830,19 @@ async function fetchMonthlyData() {
 
 function renderMonthlyResults() {
   const area=document.getElementById('mResults'); if(!monthlyData){area.innerHTML='';return;}
-  let html='<div class="pptx-note" style="margin-bottom:8px"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#4361ee" stroke-width="1.5"/><rect x="7.25" y="6.5" width="1.5" height="5.5" rx=".75" fill="#4361ee"/><circle cx="8" cy="4.75" r=".85" fill="#4361ee"/></svg>&nbsp;PPTX will have 2 slides — one for Coupons, one for Loyalty — each with a Combined (UI+Node) trend chart and a cluster pass-rate table.</div>';
+  const sections=monthlyData.pairs.map(p=>p.short||p.cat).join(', ');
+  let html=`<div class="pptx-note" style="margin-bottom:8px"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#4361ee" stroke-width="1.5"/><rect x="7.25" y="6.5" width="1.5" height="5.5" rx=".75" fill="#4361ee"/><circle cx="8" cy="4.75" r=".85" fill="#4361ee"/></svg>&nbsp;PPTX will have ${monthlyData.pairs.length} slides — ${sections} — each with a trend chart and a cluster pass-rate table.</div>`;
   for(const p of monthlyData.pairs){
     const uiAll=allClusterPct(p.uiCluster), nodeAll=allClusterPct(p.nodeCluster);
     const uiCls=uiAll!=null&&uiAll>=99?'g':'r', nodeCls=nodeAll!=null&&nodeAll>=99?'g':'r';
+    // UI-only modules have no Node figure to show
+    const nodeStat=p.node?`<span class="mod-card-sep">|</span>
+      <span class="mod-card-stat">Node All-Cluster: <strong class="${nodeCls}">${nodeAll!=null?nodeAll+'%':'—'}</strong></span>`:'';
     html+=`<div class="mod-card" style="margin-bottom:6px"><div class="mod-card-row">
       <span class="mod-card-name">${p.cat}</span>
       <span class="mod-card-sep">|</span>
-      <span class="mod-card-stat">UI All-Cluster: <strong class="${uiCls}">${uiAll!=null?uiAll+'%':'—'}</strong></span>
-      <span class="mod-card-sep">|</span>
-      <span class="mod-card-stat">Node All-Cluster: <strong class="${nodeCls}">${nodeAll!=null?nodeAll+'%':'—'}</strong></span>
+      <span class="mod-card-stat">${p.node?'UI ':''}All-Cluster: <strong class="${uiCls}">${uiAll!=null?uiAll+'%':'—'}</strong></span>
+      ${nodeStat}
       <span class="mod-card-sep">|</span>
       <span class="mod-card-stat">Days: <strong>${p.uiTrend.labels.length}</strong></span>
     </div></div>`;
@@ -862,28 +863,32 @@ async function generateMonthlyPptx() {
 
     for(const pair of monthlyData.pairs){
       const s=pres.addSlide();
+      const hasNode=!!pair.node;
 
-      // ── Header
+      // ── Header — w runs up to the 'capillary' mark at x:10.5 so long
+      // headings like "New Promotion V3 (Garuda UI)" don't get clipped
       s.addText('Automation Runs',{x:.3,y:.17,w:5.5,h:.45,fontSize:26,bold:true,color:ORANGE});
-      s.addText(`— ${pair.cat}`,{x:3.65,y:.19,w:4,h:.42,fontSize:19,bold:false,color:GRAY});
+      s.addText(`— ${pair.cat}`,{x:3.65,y:.19,w:6.75,h:.42,fontSize:19,bold:false,color:GRAY});
       s.addShape(pres.ShapeType.rect,{x:.3,y:.6,w:3.0,h:.05,fill:{color:TEAL}});
       s.addText('capillary',{x:10.5,y:.24,w:2.5,h:.35,fontSize:15,bold:true,color:'1BB3A0',align:'right'});
 
       // ── Combined (UI + Node) chart — single chart on left
       const chartW=7.9;
 
-      // Combined (UI + Node) chart
+      // Combined (UI + Node) chart — UI-only modules have nothing to combine
+      const chartLabel=`${pair.short||pair.cat}${hasNode?' Combined':''}`;
       s.addShape(pres.ShapeType.rect,{x:.3,y:.73,w:3.4,h:.32,fill:{color:'1A7F6E'},line:{color:'1A7F6E',width:1}});
-      s.addText(`${pair.cat} Combined`,{x:.3,y:.73,w:3.4,h:.32,fontSize:12,bold:true,color:'FFFFFF',align:'center',valign:'middle'});
+      s.addText(chartLabel,{x:.3,y:.73,w:3.4,h:.32,fontSize:12,bold:true,color:'FFFFFF',align:'center',valign:'middle'});
       const combImg=await renderExportChart(pair.combinedTrend.labels,pair.combinedTrend.pass,pair.combinedTrend.fail);
       if(combImg) s.addImage({data:combImg,x:.3,y:1.08,w:chartW,h:3.42});
 
-      // ── Cluster pass-rate table: 3 cols (Cluster | UI% | Node%) — no Combined% col
+      // ── Cluster pass-rate table: Cluster | UI% | Node% — no Combined% col.
+      // UI-only modules drop the Node column and widen Pass % to fill the space.
       const hdr={bold:true,fontSize:9,fill:{color:TEAL},color:'FFFFFF',align:'center',valign:'middle'};
       const tableRows=[[
         {text:'Cluster',options:{...hdr,align:'left'}},
-        {text:'UI %',   options:{...hdr}},
-        {text:'Node %', options:{...hdr}}
+        {text:hasNode?'UI %':'Pass %',options:{...hdr}},
+        ...(hasNode?[{text:'Node %',options:{...hdr}}]:[])
       ]];
 
       const pctCell=(v,bold=false)=>{
@@ -896,7 +901,7 @@ async function generateMonthlyPptx() {
         tableRows.push([
           {text:lbl,options:{fontSize:10,color:INK,align:'left',valign:'middle'}},
           pctCell(clusterPct(pair.uiCluster,lbl)),
-          pctCell(clusterPct(pair.nodeCluster,lbl))
+          ...(hasNode?[pctCell(clusterPct(pair.nodeCluster,lbl))]:[])
         ]);
       }
 
@@ -909,13 +914,13 @@ async function generateMonthlyPptx() {
       tableRows.push([
         {text:'All Clusters',options:{fontSize:10,bold:true,color:INK,align:'left',valign:'middle',...allFill}},
         boldPct(allClusterPct(pair.uiCluster)),
-        boldPct(allClusterPct(pair.nodeCluster))
+        ...(hasNode?[boldPct(allClusterPct(pair.nodeCluster))]:[])
       ]);
 
       // rowH: spread 8 rows (7 clusters + All) across ~6.24" → 0.78" each
       s.addTable(tableRows,{
         x:8.38, y:.73, w:4.67,
-        colW:[0.92,1.88,1.87],
+        colW:hasNode?[0.92,1.88,1.87]:[0.92,3.75],
         rowH:.78,
         border:{type:'solid',color:'E9ECEF',pt:.5},
         autoPage:false
