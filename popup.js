@@ -691,7 +691,9 @@ const MONTHLY_PAIRS = [
   { cat:'Coupons', ui:'couponsUI', node:'couponnode' },
   { cat:'Loyalty', ui:'loyaltyUI', node:'loyaltynode' },
   { cat:'New Promotion V3 (Garuda UI)', short:'Garuda UI', ui:'garudaUIUI', node:null },
-  { cat:'Tesseract (UI)', short:'Tesseract UI', ui:'tesseractUI', node:null }
+  { cat:'Tesseract (UI)', short:'Tesseract UI', ui:'tesseractUI', node:null },
+  // Badges has no Node module of its own — Incentives Node is its Node counterpart
+  { cat:'Badges (UI + Incentives Node)', short:'Badges', ui:'badgesUI', node:'incentivesnode' }
 ];
 
 // environment value → short display name
