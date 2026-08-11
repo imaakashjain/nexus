@@ -34,7 +34,7 @@ No manual copy-pasting. No screenshots. No spreadsheets. Just click, fetch, down
 |-----|-------------|
 | **⭐ OKR** | Tracks weekly pass rates vs OKR targets per module for the full quarter. Generates a PPTX with colour-coded pass/fail/amber status per cluster per week. |
 | **📅 Weekly** | Pulls daily PassCount / FailCount trends per module for any date range. Shows failure dates, failed run IDs with result page links, and exports a PPTX with one slide per module. |
-| **📆 Monthly** | Monthly stability overview (Production only) with one slide per section — Coupons, Loyalty, and New Promotion V3 (Garuda UI) — each with a trend chart and a per-cluster pass-rate table. |
+| **📆 Monthly** | Monthly stability overview (Production only) with one slide per section — Coupons, Loyalty, New Promotion V3 (Garuda UI), and Tesseract (UI) — each with a trend chart and a per-cluster pass-rate table. |
 
 ### Weekly PPTX Slide — what's on each slide
 

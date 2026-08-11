@@ -690,7 +690,8 @@ function setStatus(id,type,msg){const b=document.getElementById(id);b.className=
 const MONTHLY_PAIRS = [
   { cat:'Coupons', ui:'couponsUI', node:'couponnode' },
   { cat:'Loyalty', ui:'loyaltyUI', node:'loyaltynode' },
-  { cat:'New Promotion V3 (Garuda UI)', short:'Garuda UI', ui:'garudaUIUI', node:null }
+  { cat:'New Promotion V3 (Garuda UI)', short:'Garuda UI', ui:'garudaUIUI', node:null },
+  { cat:'Tesseract (UI)', short:'Tesseract UI', ui:'tesseractUI', node:null }
 ];
 
 // environment value → short display name
