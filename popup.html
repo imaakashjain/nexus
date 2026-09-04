@@ -1233,18 +1233,23 @@
               Month</button>
             <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" id="mThisMonth">This Month</button>
           </div>
+          <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px">Report format</div>
+          <div style="display:flex;gap:6px;margin-bottom:10px">
+            <button class="btn btn-outline" style="font-size:11px;padding:5px 12px" id="mFormat1"
+              data-format="1">Monthly Format 1</button>
+            <button class="btn btn-outline" style="font-size:11px;padding:5px 12px" id="mFormat2"
+              data-format="2">Monthly Format 2</button>
+          </div>
           <div
-            style="background:#f0f4ff;border:1.5px solid #c5cffb;border-radius:var(--border-radius-md);padding:8px 12px;font-size:11px;color:#3a56d4;margin-bottom:10px">
-            &#9881;&#65039; Fetches <strong>Production only</strong> — <strong>Coupons</strong> and
-            <strong>Loyalty</strong> (UI + Node). One slide per pair.
+            style="background:#f0f4ff;border:1.5px solid #c5cffb;border-radius:var(--border-radius-md);padding:8px 12px;font-size:11px;color:#3a56d4;margin-bottom:10px"
+            id="mFormatNote">
           </div>
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
             <button class="btn btn-primary" id="mFetchBtn">Fetch Monthly Data</button>
             <button class="btn btn-green" id="mDownloadBtn" disabled>📥 Download PPTX</button>
           </div>
           <div id="mStatus" class="status-bar"></div>
-          <div style="font-size:11px;color:var(--muted);margin-bottom:8px">PPTX includes 2 slides — one for Coupons, one
-            for Loyalty — each with UI, Node, and combined trend charts plus a per-cluster pass-rate table.</div>
+
           <div id="mResults"></div>
         </div>
 

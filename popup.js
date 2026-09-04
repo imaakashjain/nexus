@@ -696,6 +696,32 @@ const MONTHLY_PAIRS = [
   { cat:'Badges (UI + Incentives Node)', short:'Badges', ui:'badgesUI', node:'incentivesnode' }
 ];
 
+// ── FORMAT 2 ─────────────────────────────────────────────────────────────────
+// Instead of one slide per UI/Node pair, Format 2 merges a whole product area's
+// modules into a single slide: one combined trend chart plus a cluster table of
+// Total Runs / Failures / Pass % (no separate UI% and Node% columns).
+const MONTHLY_GROUPS = [
+  { cat:'Loyalty', short:'Loyalty',
+    modules:['tesseractUI','loyaltyUI','loyaltynode','garudaUIUI'],
+    parts:['Tesseract UI','Loyalty UI','Loyalty Node','Garuda UI'] },
+  { cat:'Incentives', short:'Incentives',
+    modules:['couponsUI','couponnode','badgesUI','incentivesnode'],
+    parts:['Coupons UI','Coupon Node','Badges UI','Incentives Node'] }
+];
+
+// 1 = one slide per UI/Node pair (default), 2 = one merged slide per group
+let monthlyFormat = 1;
+
+const MONTHLY_FORMAT_NOTES = {
+  1: '\u2699\uFE0F Fetches <strong>Production only</strong> \u2014 one slide per module pair '
+   + '(Coupons, Loyalty, Garuda UI, Tesseract UI, Badges), each with a combined trend chart and a '
+   + 'cluster table of UI % / Node %.',
+  2: '\u2699\uFE0F Fetches <strong>Production only</strong> \u2014 two merged slides: '
+   + '<strong>Loyalty</strong> (Tesseract UI + Loyalty UI + Loyalty Node + Garuda UI) and '
+   + '<strong>Incentives</strong> (Coupons UI + Coupon Node + Badges UI + Incentives Node). Each has a single '
+   + 'trend chart plus a cluster table of Total Runs / Failures / Pass %.'
+};
+
 // environment value → short display name
 const CLUSTER_LABEL = {
   'Eucrm':'EU',  'eucrm':'EU',
@@ -752,6 +778,23 @@ function initMonthlyTab() {
   document.getElementById('mThisMonth').addEventListener('click',()=>setMonthlyQuickDate('this'));
   document.getElementById('mFetchBtn').addEventListener('click', fetchMonthlyData);
   document.getElementById('mDownloadBtn').addEventListener('click', generateMonthlyPptx);
+  [1,2].forEach(f=>document.getElementById('mFormat'+f)
+    .addEventListener('click',()=>setMonthlyFormat(f)));
+  setMonthlyFormat(1);
+}
+
+// Switching format invalidates whatever was fetched for the other one
+function setMonthlyFormat(f) {
+  monthlyFormat=f;
+  [1,2].forEach(n=>{
+    const b=document.getElementById('mFormat'+n);
+    b.className='btn '+(n===f?'btn-primary':'btn-outline');
+  });
+  document.getElementById('mFormatNote').innerHTML=MONTHLY_FORMAT_NOTES[f];
+  monthlyData=null;
+  document.getElementById('mDownloadBtn').disabled=true;
+  document.getElementById('mResults').innerHTML='';
+  setStatus('mStatus','',`Format ${f} selected \u2014 fetch monthly data`);
 }
 
 // Aggregate API rows into {displayName: {pass, fail}} (merges duplicates like seacrm+Seacrm)
@@ -773,6 +816,20 @@ function clusterPct(map, lbl) {
   return tot>0 ? Math.round((pass/tot)*10000)/100 : null;
 }
 
+// Format 2: {runs, fail, pct} for one cluster (runs = pass + fail)
+function clusterStats(map, lbl) {
+  const v=map[lbl]; if(!v) return null;
+  const runs=v.pass+v.fail;
+  return {runs, fail:v.fail, pct: runs>0 ? Math.round((v.pass/runs)*10000)/100 : null};
+}
+
+// Format 2: {runs, fail, pct} summed over every cluster
+function allClusterStats(map) {
+  let p=0,f=0; Object.values(map).forEach(v=>{p+=v.pass;f+=v.fail});
+  const runs=p+f;
+  return {runs, fail:f, pct: runs>0 ? Math.round((p/runs)*10000)/100 : null};
+}
+
 // Overall pass% across all clusters
 function allClusterPct(map) {
   let p=0,f=0; Object.values(map).forEach(v=>{p+=v.pass;f+=v.fail});
@@ -791,7 +848,15 @@ async function fetchMonthlyData() {
   document.getElementById('mDownloadBtn').disabled=true;
   monthlyData=null;
   try{
-    setStatus('mStatus','loading','Fetching monthly data — Production only…');
+    setStatus('mStatus','loading',`Fetching monthly data (Format ${monthlyFormat}) — Production only…`);
+    if(monthlyFormat===2){
+      const groups=await fetchMonthlyGroups(tr,cls);
+      monthlyData={format:2,groups,sd,ed,tr};
+      renderMonthlyResults();
+      setStatus('mStatus','success','Monthly data loaded (Format 2) — click Download PPTX');
+      document.getElementById('mDownloadBtn').disabled=false;
+      return;
+    }
     const pairs=[];
     for(const pair of MONTHLY_PAIRS){
       setStatus('mStatus','loading',`Fetching ${pair.cat}: trends + cluster stats…`);
@@ -820,7 +885,7 @@ async function fetchMonthlyData() {
         nodeCluster: aggregateClusters(nodeCluster)
       });
     }
-    monthlyData={pairs,sd,ed,tr};
+    monthlyData={format:1,pairs,sd,ed,tr};
     renderMonthlyResults();
     setStatus('mStatus','success','Monthly data loaded — click Download PPTX');
     document.getElementById('mDownloadBtn').disabled=false;
@@ -831,8 +896,32 @@ async function fetchMonthlyData() {
   }
 }
 
+// Format 2 fetch: every module in a group goes into ONE trend query and ONE
+// cluster query, so the chart and the table are already merged by the backend.
+async function fetchMonthlyGroups(tr, cls) {
+  const groups=[];
+  for(const g of MONTHLY_GROUPS){
+    setStatus('mStatus','loading',`Fetching ${g.cat} (merged): trends + cluster stats…`);
+    const [trendRows,clusterRows]=await Promise.all([
+      runInSuperset(mkScript(buildTrendsPayload(tr,g.modules,cls))),
+      runInSuperset(mkScript(buildMonthlyClusterPayload(tr,g.modules,cls)))
+    ]);
+    groups.push({
+      cat:g.cat, short:g.short, parts:g.parts, modules:g.modules,
+      trend:{
+        labels: trendRows.map(r=>new Date(r.__timestamp).getDate().toString()),
+        pass:   trendRows.map(r=>r.PassCount||0),
+        fail:   trendRows.map(r=>r.FailCount||0)
+      },
+      cluster: aggregateClusters(clusterRows)
+    });
+  }
+  return groups;
+}
+
 function renderMonthlyResults() {
   const area=document.getElementById('mResults'); if(!monthlyData){area.innerHTML='';return;}
+  if(monthlyData.format===2) return renderMonthlyResultsF2(area);
   const sections=monthlyData.pairs.map(p=>p.short||p.cat).join(', ');
   let html=`<div class="pptx-note" style="margin-bottom:8px"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#4361ee" stroke-width="1.5"/><rect x="7.25" y="6.5" width="1.5" height="5.5" rx=".75" fill="#4361ee"/><circle cx="8" cy="4.75" r=".85" fill="#4361ee"/></svg>&nbsp;PPTX will have ${monthlyData.pairs.length} slides — ${sections} — each with a trend chart and a cluster pass-rate table.</div>`;
   for(const p of monthlyData.pairs){
@@ -853,9 +942,34 @@ function renderMonthlyResults() {
   area.innerHTML=html;
 }
 
+function renderMonthlyResultsF2(area) {
+  const names=monthlyData.groups.map(g=>g.short||g.cat).join(', ');
+  let html=`<div class="pptx-note" style="margin-bottom:8px"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#4361ee" stroke-width="1.5"/><rect x="7.25" y="6.5" width="1.5" height="5.5" rx=".75" fill="#4361ee"/><circle cx="8" cy="4.75" r=".85" fill="#4361ee"/></svg>&nbsp;Format 2 — PPTX will have ${monthlyData.groups.length} merged slide(s) — ${names} — each with one combined trend chart and a cluster table of Total Runs / Failures / Pass %.</div>`;
+  for(const g of monthlyData.groups){
+    const all=allClusterStats(g.cluster);
+    const cls=all.pct!=null&&all.pct>=99?'g':'r';
+    html+=`<div class="mod-card" style="margin-bottom:6px">
+      <div class="mod-card-row">
+        <span class="mod-card-name">${g.cat}</span>
+        <span class="mod-card-sep">|</span>
+        <span class="mod-card-stat">Runs: <strong>${all.runs.toLocaleString()}</strong></span>
+        <span class="mod-card-sep">|</span>
+        <span class="mod-card-stat">Failures: <strong>${all.fail.toLocaleString()}</strong></span>
+        <span class="mod-card-sep">|</span>
+        <span class="mod-card-stat">All-Cluster: <strong class="${cls}">${all.pct!=null?all.pct+'%':'—'}</strong></span>
+        <span class="mod-card-sep">|</span>
+        <span class="mod-card-stat">Days: <strong>${g.trend.labels.length}</strong></span>
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:2px">Merged: ${g.parts.join(' + ')}</div>
+    </div>`;
+  }
+  area.innerHTML=html;
+}
+
 async function generateMonthlyPptx() {
   if(!monthlyData) return setStatus('mStatus','error','Fetch data first');
   if(typeof PptxGenJS==='undefined') return setStatus('mStatus','error','PptxGenJS not loaded — reopen popup');
+  if(monthlyData.format===2) return generateMonthlyPptxF2();
   const btn=document.getElementById('mDownloadBtn');
   const old=btn.textContent; btn.disabled=true; btn.textContent='Building PPTX…';
   try{
@@ -937,6 +1051,102 @@ async function generateMonthlyPptx() {
     const fname=`monthly-report-${monthlyData.sd}_to_${monthlyData.ed}.pptx`;
     await pres.writeFile({fileName:fname});
     setStatus('mStatus','success',`Monthly PPTX downloaded — ${monthlyData.pairs.length} slides`);
+  }catch(e){
+    setStatus('mStatus','error','PPTX failed: '+e.message);
+  }finally{
+    btn.disabled=false; btn.textContent=old||'📥 Download PPTX';
+  }
+}
+
+// ============================================================
+// ===== MONTHLY FORMAT 2 — one merged slide per product area =====
+// ============================================================
+// Layout mirrors Format 1 (chart left, cluster table right) but the table
+// carries Total Runs / Failures / Pass % for the merged module set instead of
+// separate UI % and Node % columns.
+async function generateMonthlyPptxF2() {
+  const btn=document.getElementById('mDownloadBtn');
+  const old=btn.textContent; btn.disabled=true; btn.textContent='Building PPTX…';
+  try{
+    const pres=new PptxGenJS();
+    pres.defineLayout({name:'WIDE',width:13.33,height:7.5}); pres.layout='WIDE';
+    const INK='1A1A2E', GRAY='6C757D', GREEN='1D9E75', RED='DC2626', AMBER='B45309';
+    const TEAL='1A7F6E', ORANGE='D96A0A';
+
+    for(const g of monthlyData.groups){
+      const s=pres.addSlide();
+
+      // ── Header
+      s.addText('Automation Runs',{x:.3,y:.17,w:5.5,h:.45,fontSize:26,bold:true,color:ORANGE});
+      s.addText(`— ${g.cat}`,{x:3.65,y:.19,w:6.75,h:.42,fontSize:19,bold:false,color:GRAY});
+      s.addShape(pres.ShapeType.rect,{x:.3,y:.6,w:3.0,h:.05,fill:{color:TEAL}});
+      s.addText('capillary',{x:10.5,y:.24,w:2.5,h:.35,fontSize:15,bold:true,color:'1BB3A0',align:'right'});
+
+      // ── Badge naming every module folded into this slide
+      const badgeW=5.6;
+      s.addShape(pres.ShapeType.rect,{x:.3,y:.73,w:badgeW,h:.32,fill:{color:TEAL},line:{color:TEAL,width:1}});
+      s.addText(g.parts.join('  +  '),
+        {x:.3,y:.73,w:badgeW,h:.32,fontSize:10,bold:true,color:'FFFFFF',align:'center',valign:'middle'});
+
+      // ── Single merged trend chart
+      const img=await renderExportChart(g.trend.labels,g.trend.pass,g.trend.fail);
+      if(img) s.addImage({data:img,x:.3,y:1.08,w:7.9,h:3.42});
+
+      // ── Cluster table: Cluster | Total Runs | Failures | Pass %
+      const hdr={bold:true,fontSize:9,fill:{color:TEAL},color:'FFFFFF',align:'center',valign:'middle'};
+      const rows=[[
+        {text:'Cluster',options:{...hdr,align:'left'}},
+        {text:'Total Runs',options:{...hdr}},
+        {text:'Failures',options:{...hdr}},
+        {text:'Pass %',options:{...hdr}}
+      ]];
+
+      const pctColor=v=>v>=99.5?GREEN:v>=99?AMBER:RED;
+      const num=(v,bold=false,extra={})=>({
+        text: v==null?'—':v.toLocaleString(),
+        options:{fontSize:bold?11:10,bold,color:v==null?GRAY:INK,align:'center',valign:'middle',...extra}
+      });
+      const pct=(v,bold=false,extra={})=>({
+        text: v==null?'—':v+'%',
+        options:{fontSize:bold?11:10,bold,color:v==null?GRAY:pctColor(v),align:'center',valign:'middle',...extra}
+      });
+
+      for(const lbl of CLUSTER_ORDER){
+        const st=clusterStats(g.cluster,lbl);
+        rows.push([
+          {text:lbl,options:{fontSize:10,color:INK,align:'left',valign:'middle'}},
+          num(st?st.runs:null),
+          num(st?st.fail:null),
+          pct(st?st.pct:null)
+        ]);
+      }
+
+      // All-clusters bold summary row
+      const allFill={fill:{color:'F0F2F5'}};
+      const all=allClusterStats(g.cluster);
+      rows.push([
+        {text:'All Clusters',options:{fontSize:10,bold:true,color:INK,align:'left',valign:'middle',...allFill}},
+        num(all.runs,true,allFill),
+        num(all.fail,true,allFill),
+        pct(all.pct,true,allFill)
+      ]);
+
+      s.addTable(rows,{
+        x:8.38, y:.73, w:4.67,
+        colW:[0.92,1.35,1.20,1.20],
+        rowH:.68,
+        border:{type:'solid',color:'E9ECEF',pt:.5},
+        autoPage:false
+      });
+
+      // Footer
+      s.addText(`Production  |  ${monthlyData.sd} → ${monthlyData.ed}  |  ${ENV.prod.clusters.join(', ')}`,
+        {x:.3,y:7.1,w:12.7,h:.28,fontSize:8,color:GRAY});
+    }
+
+    const fname=`monthly-report-format2-${monthlyData.sd}_to_${monthlyData.ed}.pptx`;
+    await pres.writeFile({fileName:fname});
+    setStatus('mStatus','success',`Monthly PPTX (Format 2) downloaded — ${monthlyData.groups.length} slide(s)`);
   }catch(e){
     setStatus('mStatus','error','PPTX failed: '+e.message);
   }finally{
